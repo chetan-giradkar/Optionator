@@ -5,8 +5,19 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 )
+
+var metadataCache sync.Map // map[reflect.Type][]fieldMetadata
+
+type fieldMetadata struct {
+	Index      []int
+	Name       string
+	DefaultTag string
+	Required   bool
+	Type       reflect.Type
+}
 
 // Option defines a function that modifies a target configuration object.
 type Option[T any] func(target T) error
