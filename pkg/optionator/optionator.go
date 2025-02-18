@@ -90,40 +90,70 @@ func parseAndSetDefault(field reflect.Value, defaultTag string) error {
 	return nil
 }
 
-// New creates a new configuration object from a pointer to a struct,
-// sets any default values specified via struct tags, and applies the provided options.
-func New[T any](target T, opts ...Option[T]) (T, error) {
+// Config holds customizable tag names for defaults and required fields.
+type Config struct {
+	DefaultTag  string
+	RequiredTag string
+}
+
+var defaultConfig = Config{
+	DefaultTag:  "default",
+	RequiredTag: "required",
+}
+
+// getTypeMetadata now accepts a Config parameter to use the correct tag names.
+func getTypeMetadata(t reflect.Type, config Config) []fieldMetadata {
+	if cached, ok := metadataCache.Load(t); ok {
+		return cached.([]fieldMetadata)
+	}
+	var metadata []fieldMetadata
+	// Iterate over struct fields.
+	for i := 0; i < t.NumField(); i++ {
+		sf := t.Field(i)
+		// Only exportable fields.
+		if sf.PkgPath != "" {
+			continue
+		}
+		fm := fieldMetadata{
+			Index:      sf.Index,
+			Name:       sf.Name,
+			DefaultTag: sf.Tag.Get(config.DefaultTag),
+			Required:   sf.Tag.Get(config.RequiredTag) == "true",
+			Type:       sf.Type,
+		}
+		metadata = append(metadata, fm)
+	}
+	metadataCache.Store(t, metadata)
+	return metadata
+}
+
+// NewWithConfig creates a new configuration object using the provided config.
+func NewWithConfig[T any](target T, config Config, opts ...Option[T]) (T, error) {
 	v := reflect.ValueOf(target)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		return target, errors.New("target must be a pointer to a struct")
 	}
-
-	s := v.Elem()
-	t := s.Type()
-
-	// Set default values from struct tags.
-	for i := 0; i < t.NumField(); i++ {
-		field := s.Field(i)
-		if !field.CanSet() {
-			continue
-		}
-		fieldType := t.Field(i)
-		defaultTag := fieldType.Tag.Get("default")
-		if defaultTag != "" {
-			if err := parseAndSetDefault(field, defaultTag); err != nil {
-				return target, fmt.Errorf("error setting default for field %s: %w", fieldType.Name, err)
-			}
-		}
+	// Set defaults recursively.
+	if err := setDefaultRecursively(v.Elem(), config); err != nil {
+		return target, err
 	}
-
 	// Apply provided options to override defaults.
 	for _, opt := range opts {
 		if err := opt(target); err != nil {
 			return target, err
 		}
 	}
-
+	// Validate required fields.
+	if err := validateRequiredFields(v.Elem(), config); err != nil {
+		return target, err
+	}
 	return target, nil
+}
+
+// New creates a new configuration object from a pointer to a struct,
+// sets any default values specified via struct tags, and applies the provided options.
+func New[T any](target T, opts ...Option[T]) (T, error) {
+	return NewWithConfig(target, defaultConfig, opts...)
 }
 
 // setDefaultRecursively applies default values recursively for nested structs.
