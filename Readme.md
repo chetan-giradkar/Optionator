@@ -2,11 +2,13 @@
 
 Optionator is a Go library that simplifies object configuration by automatically applying default values from struct tags and allowing functional options to override them.
 
-## Overview
+## Features
 
-The library uses reflection to:
-- Set default values on struct fields using the `default` tag.
-- Provide a type-safe mechanism to override those defaults using functional options.
+- **Reflection Efficiency:** Caches field metadata for faster default value application.
+- **Nested Struct Support:** Recursively applies defaults to nested or embedded structs.
+- **Customizable Tag Names:** Configure which struct tags to use for defaults and required fields.
+- **Validation:** Automatically validates that required fields (tagged with `required:"true"`) are non-zero.
+- **Type-Safe Options:** Uses Go generics for a type-safe API.
 
 ## Example Usage
 
@@ -21,23 +23,21 @@ import (
 	"github.com/chetan-giradkar/Optionator/pkg/optionator"
 )
 
-// Server represents a configurable HTTP server with defaults.
 type Server struct {
-	Address   string        `default:"0.0.0.0:8080"`
+	Address   string        `default:"0.0.0.0" required:"true"`
 	Timeout   time.Duration `default:"30s"`
 	MaxConns  int           `default:"100"`
-	TLSConfig *tls.Config   // No default provided.
+	TLSConfig *tls.Config
 }
 
 func main() {
 	srv, err := optionator.New(&Server{},
-		optionator.With[*Server]("Address", "127.0.0.1:8081"),
-		optionator.With[*Server]("Timeout", 60*time.Second),
+		optionator.With[*Server]("Address", "127.0.0.1"),
 		optionator.With[*Server]("MaxConns", 200),
 	)
 	if err != nil {
 		panic(err)
 	}
-
 	fmt.Printf("Server Config: %+v\n", srv)
 }
+```
